@@ -1,6 +1,7 @@
 import json
 import plotly
 import pandas as pd
+import pickle
 
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
@@ -10,7 +11,7 @@ from flask import render_template, request, jsonify
 from plotly.graph_objs import Bar
 from sklearn.externals import joblib
 from sqlalchemy import create_engine
-from custom_tfidf_vectorizer import MyTfidfVectorizer
+from models.train_classifier import MyTfidfVectorizer, StartingVerbExtractor
 
 app = Flask(__name__)
 
@@ -26,12 +27,13 @@ def tokenize(text):
 
     return clean_tokens
 
+
 # load data
-engine = create_engine('sqlite:///../data/DisasterResponse.db')
+engine = create_engine('sqlite:///data/DisasterResponse.db')
 df = pd.read_sql_table('cleaned_table', engine)
 
 # load model
-model = joblib.load("../models/classifier.pkl")
+model = pickle.load(open("models/classifier.pkl", 'rb'))
 
 
 # index webpage displays cool visuals and receives user input text for model
@@ -43,9 +45,9 @@ def index():
     genre_counts = df.groupby('genre').count()['message']
     genre_names = list(genre_counts.index)
 
-    categories = df.iloc[:,4:]
+    categories = df.iloc[:, 4:]
 
-    categories_counts = (categories != 0 ).sum().values
+    categories_counts = (categories != 0).sum().values
     categories_names = list(categories.columns)
 
     # create visuals
@@ -115,7 +117,7 @@ def go():
 
 
 def main():
-    app.run(host='0.0.0.0', port=3001, debug=True)
+    app.run(host='0.0.0.0', port=3001)
 
 
 if __name__ == '__main__':
