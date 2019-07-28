@@ -1,24 +1,59 @@
 from sqlalchemy import create_engine
-from nltk.tokenize import word_tokenize
+from nltk.tokenize import word_tokenize, sent_tokenize
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import stopwords
-from sklearn.model_selection import train_test_split
-from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.pipeline import Pipeline, FeatureUnion
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.multioutput import MultiOutputClassifier
 from sklearn.metrics import classification_report
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.base import BaseEstimator, TransformerMixin
+
 import re
 import nltk
 import sys
 import pickle
 import numpy as np
 import pandas as pd
-from custom_tfidf_vectorizer import MyTfidfVectorizer
+
 
 wnl = WordNetLemmatizer()
 nltk.download('punkt')
 nltk.download('wordnet')
 nltk.download('stopwords')
+
+
+class MyTfidfVectorizer(TfidfVectorizer):
+    def fit_transform(self, X, y):
+        result = super(MyTfidfVectorizer, self).fit_transform(X, y)
+        result.sort_indices()
+        return result
+
+
+class StartingVerbExtractor(BaseEstimator, TransformerMixin):
+
+    def starting_verb(self, text):
+        sentence_list = sent_tokenize(text)
+
+        for sentence in sentence_list:
+            pos_tags = nltk.pos_tag(sentence)
+
+            # index pos_tags to get the first word and part of speech tag
+            first_word, first_tag = pos_tags[0]
+
+            if first_tag in ['VB', 'VBP']:
+                return True
+
+            return False
+
+    def fit(self, x, y=None):
+        return self
+
+    def transform(self, X):
+        # apply starting_verb function to all values in X
+        X_tagged = pd.Series(X).apply(self.starting_verb)
+        return pd.DataFrame(X_tagged).astype(bool).astype(int)
 
 
 def load_data(database_filepath):
@@ -40,10 +75,11 @@ def tokenize(text):
 
 def build_model(tokenize):
     pipeline = Pipeline([
-        ('tfidf_vectorizer', MyTfidfVectorizer(tokenizer=tokenize)),
-        ('classifier', MultiOutputClassifier(AdaBoostClassifier(
-            learning_rate=1,
-            n_estimators=50)))
+        ('features', FeatureUnion([
+            ('tfidf_vectorizer', MyTfidfVectorizer(tokenizer=tokenize)),
+            ('starting_verb_extractor', StartingVerbExtractor()),
+        ])),
+        ('classifier', MultiOutputClassifier(AdaBoostClassifier(), n_jobs=-1))
     ])
     return pipeline
 
@@ -73,14 +109,22 @@ def main():
         print('Building model...')
         model = build_model(tokenize)
 
+        parameters = {
+
+            'classifier__estimator__n_estimators': [50, 100, 200],
+            'classifier__estimator__learning_rate': [.01, .1, 1]
+        }
+
+        cv = GridSearchCV(model, param_grid=parameters)
+
         print('Training model...')
-        model.fit(X_train, Y_train)
+        model_cv = cv.fit(X_train, Y_train)
 
         print('Evaluating model...')
-        evaluate_model(model, X_test, Y_test, category_names)
+        evaluate_model(model_cv, X_test, Y_test, category_names)
 
         print('Saving model...\n    MODEL: {}'.format(model_filepath))
-        save_model(model, model_filepath)
+        save_model(model_cv, model_filepath)
 
         print('Trained model saved!')
 
