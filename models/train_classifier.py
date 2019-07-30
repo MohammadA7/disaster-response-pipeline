@@ -14,14 +14,21 @@ import re
 import nltk
 import sys
 import pickle
-import numpy as np
 import pandas as pd
-
 
 wnl = WordNetLemmatizer()
 nltk.download('punkt')
 nltk.download('wordnet')
 nltk.download('stopwords')
+
+
+def tokenize(text):
+    cleaned_text = re.sub(r"[^a-zA-Z0-9]", " ", text.lower())
+    cleaned_text = word_tokenize(cleaned_text)
+    cleaned_text = [
+        w for w in cleaned_text if w not in stopwords.words("english")]
+    cleaned_text = [token for token in cleaned_text if len(token) > 2]
+    return [wnl.lemmatize(x) for x in cleaned_text]
 
 
 class MyTfidfVectorizer(TfidfVectorizer):
@@ -51,7 +58,6 @@ class StartingVerbExtractor(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X):
-        # apply starting_verb function to all values in X
         X_tagged = pd.Series(X).apply(self.starting_verb)
         return pd.DataFrame(X_tagged).astype(bool).astype(int)
 
@@ -63,14 +69,6 @@ def load_data(database_filepath):
     X = df['message']
     y = df.iloc[:, 4:]
     return X, y, y.columns
-
-
-def tokenize(text):
-    cleaned_text = re.sub(r"[^a-zA-Z0-9]", " ", text.lower())
-    cleaned_text = word_tokenize(cleaned_text)
-    cleaned_text = [
-        w for w in cleaned_text if w not in stopwords.words("english")]
-    return [wnl.lemmatize(x) for x in cleaned_text]
 
 
 def build_model(tokenize):
@@ -110,12 +108,11 @@ def main():
         model = build_model(tokenize)
 
         parameters = {
-
-            'classifier__estimator__n_estimators': [50, 100, 200],
-            'classifier__estimator__learning_rate': [.01, .1, 1]
+            'classifier__estimator__n_estimators': [50, 100],
+            'classifier__estimator__learning_rate': [.1, 1]
         }
 
-        cv = GridSearchCV(model, param_grid=parameters)
+        cv = GridSearchCV(model, param_grid=parameters, verbose=2)
 
         print('Training model...')
         model_cv = cv.fit(X_train, Y_train)
