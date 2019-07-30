@@ -1,32 +1,16 @@
 import json
 import plotly
 import pandas as pd
+import numpy as np
 import pickle
-
-from nltk.stem import WordNetLemmatizer
-from nltk.tokenize import word_tokenize
-
 from flask import Flask
 from flask import render_template, request, jsonify
 from plotly.graph_objs import Bar
 from sklearn.externals import joblib
 from sqlalchemy import create_engine
-from models.train_classifier import MyTfidfVectorizer, StartingVerbExtractor
+from models.train_classifier import MyTfidfVectorizer, StartingVerbExtractor, tokenize
 
 app = Flask(__name__)
-
-
-def tokenize(text):
-    tokens = word_tokenize(text)
-    lemmatizer = WordNetLemmatizer()
-
-    clean_tokens = []
-    for tok in tokens:
-        clean_tok = lemmatizer.lemmatize(tok).lower().strip()
-        clean_tokens.append(clean_tok)
-
-    return clean_tokens
-
 
 # load data
 engine = create_engine('sqlite:///data/DisasterResponse.db')
@@ -34,6 +18,11 @@ df = pd.read_sql_table('cleaned_table', engine)
 
 # load model
 model = pickle.load(open("models/classifier.pkl", 'rb'))
+
+
+def load_word_counts(filepath):
+    data = np.load(filepath)
+    return list(data['top_words']), list(data['top_counts'])
 
 
 # index webpage displays cool visuals and receives user input text for model
@@ -49,6 +38,8 @@ def index():
 
     categories_counts = (categories != 0).sum().values
     categories_names = list(categories.columns)
+
+    top_words, top_counts = load_word_counts('data/counts.npz')
 
     # create visuals
     graphs = [
@@ -85,6 +76,24 @@ def index():
                 },
                 'xaxis': {
                     'title': "Category"
+                }
+            }
+        },
+        {
+            'data': [
+                Bar(
+                    x=top_words,
+                    y=top_counts
+                )
+            ],
+
+            'layout': {
+                'title': 'Words Count in the Dataset',
+                'yaxis': {
+                    'title': "Count"
+                },
+                'xaxis': {
+                    'title': "Word"
                 }
             }
         }
